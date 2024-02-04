@@ -14,7 +14,7 @@ This prevent errors when deploy dependencies with wrong `@loader_path`. The scri
 > [!IMPORTANT]
 > This script does not has key features of *macdeployqt* distribuited with Qt, for example deploy of qml, translations, binary strip, and signing. You should provide your own routine to strip binaries, sign, etc.
 
-By default it looks for Qt installed via *Homebrew* in `/usr/homebrew/opt/qt` or `/usr/local/opt/qt`
+By default it looks for Qt installed via *Homebrew* in `/opt/homebrew/opt/qt` or `/usr/local/opt/qt`
 
 This script uses macOS built-in tools: `otool`, `install_name_tool`, `codesign`
 
@@ -74,7 +74,7 @@ fix: AppBinary  with: @rpath/QtCore.framework/Versions/A/QtCore
   change rpath from /path/to/qt/lib/QtCore.framework/Versions/A/QtCore to @rpath/QtCore.framework/Versions/A/QtCore on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
 clean: AppBinary
 complete: AppBinary
-  remove rpath /usr/homebrew/lib on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
+  remove rpath /opt/homebrew/lib on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
   remove rpath @executable_path/../Frameworks on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
   add rpath @loader_path/ on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
   add rpath @executable_path/../MacOS on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
