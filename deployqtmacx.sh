@@ -311,7 +311,7 @@ qt_path () {
 	local qt_path
 
 	if [[ ! "$brew_path" =~ "/usr/local" ]]; then
-		qt_path="/usr/homebrew"
+		qt_path="/opt/homebrew"
 	else
 		qt_path="/usr/local"
 	fi
