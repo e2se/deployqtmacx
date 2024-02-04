@@ -16,7 +16,9 @@ This prevent errors when deploy dependencies with wrong `@loader_path`. The scri
 
 By default it looks for Qt installed via *Homebrew* in `/opt/homebrew/opt/qt` or `/usr/local/opt/qt`
 
-This script uses macOS built-in tools: `otool`, `install_name_tool`, `codesign`
+With complex paths it might be required `realpath` to resolve relative path, it is shipped with *macOS 14* or for older majors installable via *Homebrew* `coreutils` package or via *macports* `realpath` package.
+
+The script uses macOS built-in tools: `otool`, `install_name_tool`, `codesign`
 
 **It requires `bash` and its use is intendend for macOS only**
 
@@ -46,7 +48,7 @@ An example of the script ran with `--verbose` and `--simulate` using your Qt pat
 ```
 chmod +x deployqtmacx.sh
 
-./deployqtmacx.sh built/AppBundle.app --verbose --simulate -qtpath /path/to/qt
+./deployqtmacx.sh built/AppBundle.app --verbose --simulate -qtpath /path/to/qt &> log
 ```
 
 Produces this output:
@@ -55,8 +57,8 @@ bundle: /path/to/user/repo/built/AppBundle.app
 executable: MacOS/AppBinary
 dependency: AppBinary
 resolved: /path/to/qt/lib/QtWidgets.framework/Versions/A/QtWidgets  from: @rpath/QtWidgets.framework/Versions/A/QtWidgets
-copy: QtWidgets.framework  to: Frameworks/QtWidgets.framework/
-  copy directory from "/path/to/qt/lib/QtWidgets.framework/" to "/path/to/user/repo/built/AppBundle.app/Contents/Frameworks/QtWidgets.framework/"
+copy: QtWidgets.framework  to: Frameworks/QtWidgets.framework
+  copy directory from "/path/to/qt/lib/QtWidgets.framework" to "/path/to/user/repo/built/AppBundle.app/Contents/Frameworks/QtWidgets.framework"
 fix: AppBinary  with: @rpath/QtWidgets.framework/Versions/A/QtWidgets
   change rpath from @rpath/QtWidgets.framework/Versions/A/QtWidgets to @rpath/QtWidgets.framework/Versions/A/QtWidgets on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
 fix: QtWidgets  with: @rpath/QtWidgets.framework/Versions/A/QtWidgets
@@ -66,10 +68,10 @@ unsign: QtWidgets
   remove sign on "/path/to/user/repo/built/AppDir/AppBundle.app/Contents/Frameworks/QtWidgets.framework/Versions/A/QtWidgets"
 dependency: QtWidgets
 resolved: /path/to/qt/lib/QtGui.framework/Versions/A/QtGui  from: @rpath/QtGui.framework/Versions/A/QtGui
-copy: QtGui.framework  to: Frameworks/QtGui.framework/
+copy: QtGui.framework  to: Frameworks/QtGui.framework
 [...]
 resolved: /path/to/qt/lib/QtCore.framework/Versions/A/QtCore  from: /path/to/qt/lib/QtCore.framework/Versions/A/QtCore
-no overwrite: QtCore.framework  already at: Frameworks/QtCore.framework/
+no overwrite: QtCore.framework  already at: Frameworks/QtCore.framework
 fix: AppBinary  with: @rpath/QtCore.framework/Versions/A/QtCore
   change rpath from /path/to/qt/lib/QtCore.framework/Versions/A/QtCore to @rpath/QtCore.framework/Versions/A/QtCore on "/path/to/user/repo/built/AppBundle.app/Contents/MacOS/AppBinary"
 clean: AppBinary
@@ -84,11 +86,11 @@ copy: platforms  to: PlugIns/platforms
   copy directory from "/path/to/qt/share/qt/plugins/platforms" to "/path/to/user/repo/built/AppBundle.app/Contents/PlugIns/platforms"
 dependency: libqcocoa.dylib
 resolved: /path/to/qt/lib/QtGui.framework/Versions/A/QtGui  from: @rpath/QtGui.framework/Versions/A/QtGui
-no overwrite: QtGui.framework  already at: Frameworks/QtGui.framework/
+no overwrite: QtGui.framework  already at: Frameworks/QtGui.framework
 fix: libqcocoa.dylib  with: @rpath/QtGui.framework/Versions/A/QtGui
   change rpath from @rpath/QtGui.framework/Versions/A/QtGui to @rpath/QtGui.framework/Versions/A/QtGui on "/path/to/user/repo/built/AppBundle.app/Contents/PlugIns/platforms/libqcocoa.dylib"
 resolved: /path/to/qt/QtCore.framework/Versions/A/QtCore  from: @rpath/QtCore.framework/Versions/A/QtCore
-no overwrite: QtCore.framework  already at: Frameworks/QtCore.framework/
+no overwrite: QtCore.framework  already at: Frameworks/QtCore.framework
 [...]
 ```
 

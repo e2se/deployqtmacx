@@ -32,8 +32,12 @@ _PLUGINS_PATH=""
 # private string _INPUT_FILE
 _INPUT_FILE=""
 
-# private string __EXEC_PATH
-__EXEC_PATH=""
+# private boolean __HASREALPATH
+__HASREALPATH=""
+# private string __BREWLIBPATH
+__BREWLIBPATH=""
+# private string __BINFILE
+__BINFILE=""
 # private array __EPATHS
 __EPATHS=()
 # private string __ETEMPVAR
@@ -67,11 +71,23 @@ usage () {
 error () {
 	local msg="$1"
 
-	if [[ "$_VERBOSE" == true ]]; then
-		echo "$msg"
-	fi
+	# if [[ "$_VERBOSE" == true ]]; then
+	# 	echo "$msg"
+	# fi
 
 	echo "$msg" >&2
+}
+
+has_realpath () {
+	if [[ -n "$__HASREALPATH" ]]; then
+		echo "$__HASREALPATH"
+	fi
+
+	local run=$(type -t realpath)
+
+	if [[ -n "$run" ]]; then
+		__HASREALPATH=1
+	fi
 }
 
 is_exec () {
@@ -85,7 +101,7 @@ is_exec () {
 is_framework () {
 	local path="$1"
 
-	if [[ "$path" =~ ".framework/" ]]; then
+	if [[ "$path" =~ ".framework" ]]; then
 		echo 1
 	fi
 }
@@ -93,7 +109,7 @@ is_framework () {
 is_plugin () {
 	local path="$1"
 
-	if [[ "$path" =~ "/plugins" ]]; then
+	if [[ "$path" =~ "/plugins" || "$path" =~ "/PlugIns" ]]; then
 		echo 1
 	fi
 }
@@ -138,7 +154,7 @@ path_resolver () {
 		fi
 	fi
 
-	if [[ ! -e "$path" ]]; then
+	if [[ ! -e "$path" && $(has_realpath) ]]; then
 		_pos="${_path%%\/*}"
 		path="${_path:${#_pos}}"
 
@@ -163,18 +179,18 @@ path_abspath () {
 			abspath=$(dirname "$path")
 		elif [[ $(is_framework "$path") ]]; then
 			_len="${path%%.framework\/*}"
-			abspath="${path:0:${#_len}}.framework/"
+			abspath="${path:0:${#_len}}.framework"
 		fi
 
 		path="$abspath"
 	fi
 	if [[ -n "$basepath" ]]; then
-		if [[ $(is_framework "$path") ]]; then
-			local parentpath=$(framework_path)
+		if [[ $(is_plugin "$path") ]]; then
+			local parentpath=$(plugins_path)
 			path="${path/$parentpath/}"
 			path="${path:1}"
-		elif [[ $(is_plugin "$path") ]]; then
-			local parentpath=$(plugins_path)
+		elif [[ $(is_framework "$path") ]]; then
+			local parentpath=$(framework_path)
 			path="${path/$parentpath/}"
 			path="${path:1}"
 		else
@@ -293,6 +309,30 @@ trim () {
 	echo "$value"
 }
 
+brew_lib_path () {
+	if [[ -n "$__BREWLIBPATH" ]]; then
+		echo "$__BREWLIBPATH"
+	fi
+
+	local run=$(which brew)
+
+	local brew_path=$run
+
+	if [[ -z "$brew_path" ]]; then
+		return 0
+	fi
+
+	local brew_lib_path
+
+	if [[ ! "$brew_path" =~ "/usr/local" ]]; then
+		brew_lib_path="/opt/homebrew/lib"
+	else
+		brew_lib_path="/usr/local/lib"
+	fi
+
+	__BREWLIBPATH="$brew_lib_path"
+}
+
 qt_path () {
 	if [[ -n "$_QT_PATH" ]]; then
 		echo "$_QT_PATH"
@@ -324,8 +364,6 @@ qt_path () {
 	fi
 
 	_QT_PATH="$qt_path"
-
-	echo "$qt_path"
 }
 
 framework_path () {
@@ -344,8 +382,6 @@ framework_path () {
 	fi
 
 	_FRAMEWORK_PATH="$framework_path"
-
-	echo "$framework_path"
 }
 
 plugins_path () {
@@ -364,8 +400,6 @@ plugins_path () {
 	fi
 
 	_PLUGINS_PATH="$plugins_path"
-
-	echo "$plugins_path"
 }
 
 recurse_dependency () {
@@ -527,12 +561,25 @@ copy_dependency () {
 	fi
 
 	if [[ "$_SIMULATE" == false ]]; then
-		local _opt
 		if [[ -d "$srcpath" ]]; then
-			_opt="-R"
-		fi
+			if [[ $(is_framework "$srcpath") ]]; then
+				srcpath="${srcpath%\/}"
+				dstpath="${dstpath%\/}"
 
-		cp $opt "$srcpath" "$dstpath"
+				local filename=$(basename "$srcpath")
+				filename="${filename%%.framework}"
+
+				mkdir -p "$dstpath/Versions/A"
+
+				cp "$srcpath/Versions/A/$filename" "$dstpath/Versions/A/$filename"
+				ln -s "$dstpath/Versions/A/$filename" "$dstpath/$filename"
+				ln -s "$dstpath/Versions/A" "$dstpath/Versions/Current"
+			else
+				cp -R "$srcpath" "$dstpath"
+			fi
+		else
+			cp "$srcpath" "$dstpath"
+		fi
 	elif [[ "$_VERBOSE" == true ]]; then
 		local _type="file"
 		if [[ -d "$srcpath" ]]; then
@@ -555,7 +602,7 @@ fix_dependency () {
 		printf "fix: %s  with: %s\n" "$filename" "$rpath"
 	fi
 
-	if [[ ! $(is_exec "$path") ]]; then
+	if [[ ! $(is_exec "$path") && $(basename "$path") == $(basename "$rpath") ]]; then
 		if [[ "$_SIMULATE" == false ]]; then
 			install_name_tool -id $rpath "$path"
 		elif [[ "$_VERBOSE" == true ]]; then
@@ -578,7 +625,7 @@ remove_sign () {
 	fi
 
 	if [[ "$_SIMULATE" == false ]]; then
-		codesign --force -s - "$path"
+		codesign --force --remove-signature "$path"
 	elif [[ "$_VERBOSE" == true ]]; then
 		printf "  remove sign on \"%s\"\n" "$path"
 	fi
@@ -650,14 +697,20 @@ complete_dependency () {
 	fi
 
 	if [[ $(is_exec "$path") ]]; then
+		local brew_lib_path=$(brew_lib_path)
+
 		if [[ "$_SIMULATE" == false ]]; then
-			install_name_tool -delete_rpath /usr/local/lib "$path"
+			if [[ -n "$brew_lib_path" ]]; then
+				install_name_tool -delete_rpath "$brew_lib_path" "$path"
+			fi
 			install_name_tool -delete_rpath @executable_path/../Frameworks "$path"
 			install_name_tool -add_rpath @loader_path/ "$path"
 			install_name_tool -add_rpath @executable_path/../MacOS "$path"
 			install_name_tool -add_rpath @executable_path/../Frameworks "$path"
 		elif [[ "$_VERBOSE" == true ]]; then
-			printf "  remove rpath %s on \"%s\"\n" "/usr/local/lib" "$path"
+			if [[ -n "$brew_lib_path" ]]; then
+				printf "  remove rpath %s on \"%s\"\n" "$brew_lib_path" "$path"
+			fi
 			printf "  remove rpath %s on \"%s\"\n" "@executable_path/../Frameworks" "$path"
 			printf "  add rpath %s on \"%s\"\n" "@loader_path/" "$path"
 			printf "  add rpath %s on \"%s\"\n" "@executable_path/../MacOS" "$path"
@@ -683,11 +736,11 @@ complete_dependency () {
 deploy_executable () {
 	local filename="$1"
 
-	local path="$__EXEC_PATH/$filename"
+	local path="$__BINFILE/$filename"
 
 	if [[ "$_VERBOSE" == true ]]; then
-		local execfilename=$(relname "$path")
-		printf "executable: %s\n" "$execfilename"
+		local binfilename=$(relname "$path")
+		printf "executable: %s\n" "$binfilename"
 	fi
 
 	recurse_dependency "$path"
@@ -741,13 +794,7 @@ deploy_plugin () {
 
 		for filename in $libs; do
 			filename=$(trim "$filename")
-			local libpath
-
-			if [[ "$_SIMULATE" == true ]]; then
-				libpath="${srcpath}/$filename"
-			else
-				libpath="${dstpath}/$filename"
-			fi
+			local libpath="${srcpath}/$filename"
 
 			recurse_dependency "$libpath"
 		done
@@ -767,10 +814,10 @@ deploy () {
 		printf "bundle: %s\n" "$input_file"
 	fi
 
-	local exec_path="${input_file}/Contents/MacOS"
-	__EXEC_PATH="$exec_path"
+	local binary_path="${input_file}/Contents/MacOS"
+	__BINFILE="$binary_path"
 
-	local run=$(ls -1 "$exec_path")
+	local run=$(ls -1 "$binary_path")
 
 	if [[ -z "$run" ]]; then
 		error "$(printf "Error executables not found: %s\n" "$input_file")"
@@ -778,10 +825,13 @@ deploy () {
 		return 1
 	fi
 
-	#TODOFIX used in subcommands
-	# qt_path
-	# framework_path
-	# plugins_path
+	has_realpath
+	brew_lib_path
+	qt_path
+	framework_path
+	plugins_path
+
+	mkdir -p "${input_file}/Contents/Frameworks"
 
 	IFS=$'\n'
 	local execs=$run
@@ -793,6 +843,8 @@ deploy () {
 	done
 
 	if [[ "$_DEPLOY_PLUGINS" == true ]]; then
+		mkdir -p "${input_file}/Contents/PlugIns"
+
 		local plugins=("${_PLUGINS[@]}")
 
 		for plugin in "${plugins[@]}"; do
