@@ -18,7 +18,7 @@ By default it looks for Qt installed via *Homebrew* in `/opt/homebrew/opt/qt` or
 
 With complex paths it might be required `realpath` to resolve relative path, it is shipped with *macOS 14* or for older majors installable via *Homebrew* `coreutils` package or via *macports* `realpath` package.
 
-The script uses macOS built-in tools: `otool`, `install_name_tool`, `codesign`
+The script uses macOS built-in tools: `dyld_info`, `otool`, `install_name_tool`, `codesign`
 
 **It requires `bash` and its use is intendend for macOS only**
 
