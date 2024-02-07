@@ -34,8 +34,8 @@ The script uses macOS built-in tools: `dyld_info`, `otool`, `install_name_tool`,
 | -e --print-excluded | Print excluded files |
 | -f --force | Force overwrite of files |
 | -np --no-deploy-plugins | Disallow plugins deploy |
-| -plugins | Plugins to deploy (platforms styles) |
-| -exclude-lib-paths | Library paths to exclude (/usr/lib /System/Library) |
+| -plugins | Plugins to deploy (platforms,styles) |
+| -exclude-lib-paths | Library paths to exclude (/usr/lib,/System/Library) |
 | -qt-path | Set Qt path |
 | -framework-path | Set Qt framework path |
 | -plugins-path | Set Qt plugins path |
