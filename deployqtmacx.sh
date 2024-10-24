@@ -17,25 +17,37 @@ _SIMULATE=false
 _PRINT_EXCLUDED=false
 # private boolean _FORCE_OVERWRITE
 _FORCE_OVERWRITE=false
-# private boolean _DEPLOY_PLUGINS
-_DEPLOY_PLUGINS=true
+# private string _INPUT_FILE
+_INPUT_FILE=""
+# private string _ENVIRONMENT
+_ENVIRONMENT="brew"
+# private string _SYSTEM
+_SYSTEM=""
 # private array _EXCLUDE_LIB_PATHS
 _EXCLUDE_LIB_PATHS=("/usr/lib" "/System/Library")
-# private array _PLUGINS
-_PLUGINS=("platforms" "styles")
+# private string _LIB_PATH
+_LIB_PATH=""
 # private string _QT_PATH
 _QT_PATH=""
 # private string _FRAMEWORK_PATH
 _FRAMEWORK_PATH=""
 # private string _PLUGINS_PATH
 _PLUGINS_PATH=""
-# private string _INPUT_FILE
-_INPUT_FILE=""
+# private integer _QT_VER
+_QT_VER=6
+# private string _QT_VERSION
+_QT_VERSION="6.8.0"
+# private array _PLUGINS
+_PLUGINS=("platforms" "styles")
+# private boolean _DEPLOY_PLUGINS
+_DEPLOY_PLUGINS=true
 
 # private boolean __HASREALPATH
 __HASREALPATH=""
-# private string __BREWLIBPATH
-__BREWLIBPATH=""
+# private integer __QTVER
+__QTVER=""
+# private string __QTVERSION
+__QTVERSION=""
 # private string __BINFILE
 __BINFILE=""
 # private array __EPATHS
@@ -61,7 +73,11 @@ usage () {
 	printf "%s\n"   "-f --force                Force overwrite of files"
 	printf "%s\n"   "-np --no-deploy-plugins   Disallow plugins deploy"
 	printf "%s\n"   "-plugins                  Plugins to deploy (platforms,styles)"
+	printf "%s\n"   "-environment              Set system environment [brew]"
+	printf "%s\n"   "-system                   Set system architecture [auto]"
+	printf "%s\n"   "-qt-version               Set Qt version [6.x.x]"
 	printf "%s\n"   "-exclude-lib-paths        Library paths to exclude (/usr/lib,/System/Library)"
+	printf "%s\n"   "-lib-path                 Set system environment lib path"
 	printf "%s\n"   "-qt-path                  Set Qt path"
 	printf "%s\n"   "-framework-path           Set Qt framework path"
 	printf "%s\n"   "-plugins-path             Set Qt plugins path"
@@ -70,10 +86,6 @@ usage () {
 
 error () {
 	local msg="$1"
-
-	# if [[ "$_VERBOSE" == true ]]; then
-	# 	echo "$msg"
-	# fi
 
 	echo "$msg" >&2
 }
@@ -309,28 +321,85 @@ trim () {
 	echo "$value"
 }
 
-brew_lib_path () {
-	if [[ -n "$__BREWLIBPATH" ]]; then
-		echo "$__BREWLIBPATH"
+qt_version () {
+	if [[ -n "$__QTVER" ]]; then
+		echo "$__QTVER"
 	fi
 
-	local run=$(which brew)
+	local qt_ver="$_QT_VER"
+	local qt_version="$_QT_VERSION"
 
-	local brew_path=$run
-
-	if [[ -z "$brew_path" ]]; then
-		return 0
-	fi
-
-	local brew_lib_path
-
-	if [[ ! "$brew_path" =~ "/usr/local" ]]; then
-		brew_lib_path="/opt/homebrew/lib"
+	if [[ "${_QT_VERSION%%.*}" -ge 5 && "$_QT_VERSION" =~ [0-9]\.[0-9]+\.[0-9]+ ]]; then
+		qt_ver="${_QT_VERSION%%.*}"
+		qt_version="$_QT_VERSION"
 	else
-		brew_lib_path="/usr/local/lib"
+		local tip="Allowed values: 6.x.x 5.x.x"
+		error "$(printf "Error Qt version unknown: %s\n  %s\n" "$_QT_VERSION" "$tip")"
+
+		return 1
 	fi
 
-	__BREWLIBPATH="$brew_lib_path"
+	__QTVER="$qt_ver"
+	__QTVERSION="$qt_version"
+}
+
+lib_path () {
+	if [[ -n "$_LIB_PATH" ]]; then
+		echo "$_LIB_PATH"
+	fi
+
+	local lib_path
+
+	if [[ "$_ENVIRONMENT" == "brew" ]]; then
+		local run=$(which brew)
+		local brew_path=$run
+
+		if [[ -z "$brew_path" ]]; then
+			error "$(printf "Error Homebrew path not found: %s\n" "$brew_path")"
+
+			return 1
+		else
+			if [[ "$_SYSTEM" == "silicon" ]]; then
+				lib_path="/opt/homebrew/lib"
+			elif [[ "$_SYSTEM" == "intel" ]]; then
+				lib_path="/usr/local/lib"
+			else
+				if [[ "$brew_path" =~ "/opt/homebrew" ]]; then
+					lib_path="/opt/homebrew/lib"
+				elif [[ "$brew_path" =~ "/usr/local" ]]; then
+					lib_path="/usr/local/lib"
+				fi
+			fi
+		fi
+	elif [[ "$_ENVIRONMENT" == "port" ]]; then
+		local run=$(which port)
+		local port_path=$run
+
+		if [[ -z "$port_path" ]]; then
+			error "$(printf "Error MacPorts path not found: %s\n" "$port_path")"
+
+			return 1
+		else
+			if [[ "$port_path" =~ "/opt/local" ]]; then
+				lib_path="/opt/local/lib"
+			fi
+		fi
+	fi
+
+	if [[ -z "$lib_path" ]]; then
+		local tip="You should provide lib path through -lib-path argument."
+		error "$(printf "Error lib path unknown\n  %s\n" "$tip")"
+
+		return 1
+	fi
+
+	if [[ ! -e "$lib_path" ]]; then
+		error "$(printf "Error lib path not found: %s\n" "$lib_path")"
+
+		return 1
+	fi
+
+	_LIB_PATH="$lib_path"
 }
 
 qt_path () {
@@ -338,24 +407,62 @@ qt_path () {
 		echo "$_QT_PATH"
 	fi
 
-	local run=$(which brew)
+	local qt_path
 
-	local brew_path=$run
+	if [[ "$_ENVIRONMENT" == "brew" ]]; then
+		local run=$(which brew)
+		local brew_path=$run
 
-	if [[ -z "$brew_path" ]]; then
-		error "$(printf "Error Homebrew path not found: %s\n" "$brew_path")"
+		if [[ -z "$brew_path" ]]; then
+			error "$(printf "Error Homebrew path not found: %s\n" "$brew_path")"
+
+			return 1
+		else
+			if [[ "$_SYSTEM" == "silicon" ]]; then
+				qt_path="/opt/homebrew"
+			elif [[ "$_SYSTEM" == "intel" ]]; then
+				qt_path="/usr/local"
+			else
+				if [[ "$brew_path" =~ "/opt/homebrew" ]]; then
+					qt_path="/opt/homebrew"
+				elif [[ "$brew_path" =~ "/usr/local" ]]; then
+					qt_path="/usr/local"
+				fi
+			fi
+
+			if [[ -n "$qt_path" ]]; then
+				if [[ "$__QTVER" -eq 6 ]]; then
+					qt_path="${qt_path}/opt/qt"
+				elif [[ "$__QTVER" -eq 5 ]]; then
+					qt_path="${qt_path}/opt/qt5"
+				fi
+			fi
+		fi
+	elif [[ "$_ENVIRONMENT" == "port" ]]; then
+		local run=$(which port)
+		local port_path=$run
+
+		if [[ -z "$port_path" ]]; then
+			error "$(printf "Error MacPorts path not found: %s\n" "$port_path")"
+
+			return 1
+		else
+			if [[ "$port_path" =~ "/opt/local" ]]; then
+				if [[ "$__QTVER" -eq 6 ]]; then
+					qt_path="/opt/local/libexec/qt6"
+				elif [[ "$__QTVER" -eq 5 ]]; then
+					qt_path="/opt/local/libexec/qt5"
+				fi
+			fi
+		fi
+	fi
+
+	if [[ -z "$qt_path" ]]; then
+		local tip="You should provide Qt path through -qt-path argument."
+		error "$(printf "Error Qt path unknown\n  %s\n" "$tip")"
 
 		return 1
 	fi
-
-	local qt_path
-
-	if [[ ! "$brew_path" =~ "/usr/local" ]]; then
-		qt_path="/opt/homebrew"
-	else
-		qt_path="/usr/local"
-	fi
-	qt_path="${qt_path}/opt/qt"
 
 	if [[ ! -e "$qt_path" ]]; then
 		error "$(printf "Error Qt path not found: %s\n" "$qt_path")"
@@ -714,19 +821,19 @@ complete_dependency () {
 	fi
 
 	if [[ $(is_exec "$path") ]]; then
-		local brew_lib_path=$(brew_lib_path)
+		local lib_path=$(lib_path)
 
 		if [[ "$_SIMULATE" == false ]]; then
-			if [[ -n "$brew_lib_path" ]]; then
-				install_name_tool -delete_rpath "$brew_lib_path" "$path"
+			if [[ -n "$lib_path" ]]; then
+				install_name_tool -delete_rpath "$lib_path" "$path"
 			fi
 			install_name_tool -delete_rpath @executable_path/../Frameworks "$path"
 			install_name_tool -add_rpath @loader_path/ "$path"
 			install_name_tool -add_rpath @executable_path/../MacOS "$path"
 			install_name_tool -add_rpath @executable_path/../Frameworks "$path"
 		elif [[ "$_VERBOSE" == true ]]; then
-			if [[ -n "$brew_lib_path" ]]; then
-				printf "  remove rpath %s on \"%s\"\n" "$brew_lib_path" "$path"
+			if [[ -n "$lib_path" ]]; then
+				printf "  remove rpath %s on \"%s\"\n" "$lib_path" "$path"
 			fi
 			printf "  remove rpath %s on \"%s\"\n" "@executable_path/../Frameworks" "$path"
 			printf "  add rpath %s on \"%s\"\n" "@loader_path/" "$path"
@@ -843,7 +950,8 @@ deploy () {
 	fi
 
 	has_realpath
-	brew_lib_path
+	qt_version
+	lib_path
 	qt_path
 	framework_path
 	plugins_path
@@ -899,17 +1007,28 @@ for SRG in "$@"; do
 			_FORCE_OVERWRITE=true
 			shift
 			;;
-		-np|--no-deploy-plugins)
-			_DEPLOY_PLUGINS=false
+		-environment*)
+			_ENVIRONMENT="$2"
+			shift
 			shift
 			;;
-		-plugins*)
-			_PLUGINS=(${2//,/ })
+		-system*)
+			_SYSTEM="$2"
+			shift
+			shift
+			;;
+		-qt-version*)
+			_QT_VERSION="$2"
 			shift
 			shift
 			;;
 		-exclude-lib-paths*)
 			_EXCLUDE_LIB_PATHS=(${2//,/ })
+			shift
+			shift
+			;;
+		-lib-path*)
+			_LIB_PATH="$2"
 			shift
 			shift
 			;;
@@ -926,6 +1045,15 @@ for SRG in "$@"; do
 		-plugins-path*)
 			_PLUGINS_PATH="$2"
 			shift
+			shift
+			;;
+		-plugins*)
+			_PLUGINS=(${2//,/ })
+			shift
+			shift
+			;;
+		-np|--no-deploy-plugins)
+			_DEPLOY_PLUGINS=false
 			shift
 			;;
 		-h|--help)

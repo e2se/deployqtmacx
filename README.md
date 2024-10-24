@@ -2,8 +2,6 @@
 
 Finalize app bundle like *macdeployqt* with path resolver.
 
-:construction: *beta* :construction:
-
 The main difference with *macdeployqt* is the path resolver used to fix relative paths and to pass your Qt path, framework an plugins path.
 
 This prevent errors when deploy dependencies with wrong `@loader_path`. The script fix also `@rpath` on each dependency found, using `@rpath` instead of `@executable_path` that is what used by *macdeployqt*.
@@ -14,11 +12,15 @@ This prevent errors when deploy dependencies with wrong `@loader_path`. The scri
 > [!IMPORTANT]
 > This script does not has key features of *macdeployqt* distribuited with Qt, for example deploy of qml, translations, binary strip, and signing. You should provide your own routine to strip binaries, sign, etc.
 
-By default it looks for Qt installed via *Homebrew* in `/opt/homebrew/opt/qt` or `/usr/local/opt/qt`
+By default it looks for Qt installed via *Homebrew* or *MacPorts*.
 
 With complex paths it might be required `realpath` to resolve relative path, it is shipped with *macOS 14* or for older majors installable via *Homebrew* `coreutils` package or via *macports* `realpath` package.
 
 The script uses macOS built-in tools: `dyld_info`, `otool`, `install_name_tool`, `codesign`
+
+`-environment` system environment values are: brew, port
+
+`-system` system architecture values are: silicon, intel
 
 **It requires `bash` and its use is intendend for macOS only**
 
@@ -35,7 +37,11 @@ The script uses macOS built-in tools: `dyld_info`, `otool`, `install_name_tool`,
 | -f --force | Force overwrite of files |
 | -np --no-deploy-plugins | Disallow plugins deploy |
 | -plugins | Plugins to deploy (platforms,styles) |
+| -environment | Set system environment \[brew\] |
+| -system | Set system architecture |
+| -qt-version | Set Qt version \[6.x.x\] |
 | -exclude-lib-paths | Library paths to exclude (/usr/lib,/System/Library) |
+| -lib-path | Set system environment lib path |
 | -qt-path | Set Qt path |
 | -framework-path | Set Qt framework path |
 | -plugins-path | Set Qt plugins path |
