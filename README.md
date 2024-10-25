@@ -35,6 +35,7 @@ The script uses macOS built-in tools: `dyld_info`, `otool`, `install_name_tool`,
 | -s --simulate | Simulate actions without write files |
 | -e --print-excluded | Print excluded files |
 | -f --force | Force overwrite of files |
+| -nq --no-patch-qtcore | Disallow patching QtCore binary |
 | -np --no-deploy-plugins | Disallow plugins deploy |
 | -plugins | Plugins to deploy (platforms,styles) |
 | -environment | Set system environment \[brew\] |

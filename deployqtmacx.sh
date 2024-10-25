@@ -39,6 +39,8 @@ _QT_VER=6
 _QT_VERSION="6.8.0"
 # private array _PLUGINS
 _PLUGINS=("platforms" "styles")
+# private boolean _PATCH_QTCORE
+_PATCH_QTCORE=true
 # private boolean _DEPLOY_PLUGINS
 _DEPLOY_PLUGINS=true
 
@@ -71,6 +73,7 @@ usage () {
 	printf "%s\n"   "-s --simulate             Simulate actions without write files"
 	printf "%s\n"   "-e --print-excluded       Print excluded files"
 	printf "%s\n"   "-f --force                Force overwrite of files"
+	printf "%s\n"   "-nq --no-patch-qtcore     Disallow patching QtCore binary"
 	printf "%s\n"   "-np --no-deploy-plugins   Disallow plugins deploy"
 	printf "%s\n"   "-plugins                  Plugins to deploy (platforms,styles)"
 	printf "%s\n"   "-environment              Set system environment [brew]"
@@ -498,7 +501,13 @@ plugins_path () {
 
 	local qt_path=$(qt_path)
 
-	local plugins_path="${qt_path}/share/qt/plugins"
+	local plugins_path
+
+	if [[ "$_ENVIRONMENT" == "brew" ]]; then
+		plugins_path="${qt_path}/share/qt/plugins"
+	elif [[ "$_ENVIRONMENT" == "port" ]]; then
+		plugins_path="${qt_path}/plugins"
+	fi
 
 	if [[ ! -e "$plugins_path" ]]; then
 		error "$(printf "Error Qt plugins path not found: %s\n" "$plugins_path")"
@@ -691,7 +700,7 @@ copy_dependency () {
 				local pwd="$PWD"
 				cd "$dstpath"
 				ln -s "Versions/A/$filename" "$filename"
-				cd "$dstpath/Versions"
+				cd "Versions"
 				ln -s "A" "Current"
 				cd "$pwd"
 			elif [[ "$_FORCE_OVERWRITE" == true ]]; then
@@ -737,6 +746,16 @@ fix_dependency () {
 		install_name_tool -change $depname $rpath "$path"
 	elif [[ "$_VERBOSE" == true ]]; then
 		printf "  change rpath from %s to %s on \"%s\"\n" "$depname" "$rpath" "$path"
+	fi
+
+	local lib_path=$(lib_path)
+
+	if [[ -n "$lib_path" ]]; then
+		if [[ "$_SIMULATE" == false ]]; then
+			install_name_tool -delete_rpath "$lib_path" "$path"
+		elif [[ "$_VERBOSE" == true ]]; then
+			printf "  remove rpath %s on \"%s\"\n" "$lib_path" "$path"
+		fi
 	fi
 }
 
@@ -925,6 +944,55 @@ deploy_plugin () {
 	fi
 }
 
+patch_qtcore ()
+{
+	local path="$1"
+	local filename=$(basename "$path")
+
+	if [[ "$_VERBOSE" == true ]]; then
+		printf "patch: %s\n" "$filename"
+	fi
+
+	local offset=$(LC_CTYPE=C grep "qt_prfxpath=" -oba -m 1 "$path")
+
+	if [[ -z "$offset" ]]; then
+		return 0
+	fi
+
+	offset="${offset%:*}"
+	
+	if [[ "$_VERBOSE" == true ]]; then
+		printf "  patch QtCore binary at offset: %d\n" "$offset"
+	fi
+
+	if [[ "$_SIMULATE" == true ]]; then
+		return 0
+	fi
+
+	local pwd="$PWD"
+	local basepath=$(dirname "$path")
+
+	cd "$basepath"
+
+	local span=""
+	for i in {0..251}; do
+		span+="\x00"
+	done
+
+	printf "qtprfxpath=.$span" > "${filename}_p.bin"
+
+	head -c "$offset" "$filename" > "${filename}_l.bin"
+	# head -c "$((offset+264))" "$filename" | tail -c 264 > "${filename}_m.bin"
+	tail -c "+$((offset+264+1))" "$filename" > "${filename}_r.bin"
+
+	cat "${filename}_l.bin" "${filename}_p.bin" "${filename}_r.bin" > "$filename.bin"
+	rm "$filename"
+	mv "${filename}.bin" "$filename"
+	rm "${filename}_l.bin" "${filename}_p.bin" "${filename}_r.bin"
+
+	cd "$pwd"
+}
+
 deploy () {
 	local input_file="$_INPUT_FILE"
 
@@ -977,6 +1045,12 @@ deploy () {
 
 			deploy_plugin "$plugin"
 		done
+	fi
+
+	if [[ "$_PATCH_QTCORE" == true ]]; then
+		local path="${input_file}/Contents/Frameworks/QtCore.framework/Versions/A/QtCore"
+
+		patch_qtcore "$path"
 	fi
 }
 
@@ -1050,6 +1124,10 @@ for SRG in "$@"; do
 		-plugins*)
 			_PLUGINS=(${2//,/ })
 			shift
+			shift
+			;;
+		-nq|--no-patch-qtcore)
+			_PATCH_QTCORE=false
 			shift
 			;;
 		-np|--no-deploy-plugins)
